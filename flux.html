@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flux — Quadtree Particle Flow</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            cursor: crosshair;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        canvas { display: block; }
+
+        .ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255,255,255,0.7);
+            font-size: 13px;
+            line-height: 1.8;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .ui h1 {
+            font-size: 18px;
+            font-weight: 300;
+            letter-spacing: 3px;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+        .ui .key {
+            display: inline-block;
+            background: rgba(255,255,255,0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin: 0 2px;
+            font-size: 11px;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+
+        .stats {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(255,255,255,0.4);
+            font-size: 11px;
+            pointer-events: none;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .mode-bar {
+            position: fixed;
+            bottom: 28px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+            z-index: 20;
+            pointer-events: auto;
+            padding: 6px 10px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            backdrop-filter: blur(8px);
+        }
+
+        .mode-btn {
+            padding: 7px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.03);
+            color: rgba(255,255,255,0.45);
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+
+        .mode-btn:hover {
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.8);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        .mode-btn.active {
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+            border-color: rgba(255,255,255,0.3);
+            box-shadow: 0 0 20px rgba(255,255,255,0.05);
+        }
+
+        .clear-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 20;
+            padding: 7px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.03);
+            color: rgba(255,255,255,0.5);
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            letter-spacing: 0.5px;
+        }
+
+        .clear-btn:hover {
+            background: rgba(255,80,80,0.15);
+            color: rgba(255,120,120,0.9);
+            border-color: rgba(255,80,80,0.3);
+        }
+
+        .type-bar {
+            position: fixed;
+            bottom: 75px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 6px;
+            z-index: 20;
+            pointer-events: auto;
+            padding: 6px 10px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            backdrop-filter: blur(8px);
+        }
+
+        .type-btn {
+            padding: 6px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.03);
+            color: rgba(255,255,255,0.45);
+            font-size: 11px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .type-btn .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .type-btn:hover {
+            background: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.8);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        .type-btn.active {
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+            border-color: rgba(255,255,255,0.3);
+            box-shadow: 0 0 20px rgba(255,255,255,0.05);
+        }
+
+        @media (max-width: 700px) {
+            .mode-bar, .type-bar {
+                gap: 3px;
+                padding: 4px 6px;
+                bottom: 20px;
+            }
+            .mode-bar { bottom: 55px; }
+            .type-bar { bottom: 20px; }
+            .mode-btn, .type-btn {
+                padding: 5px 8px;
+                font-size: 10px;
+            }
+            .ui { font-size: 11px; }
+            .ui h1 { font-size: 15px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <h1>FLUX</h1>
+        <div><span class="key">MOVE</span> to attract particles</div>
+        <div><span class="key">CLICK</span> to explode</div>
+        <div><span class="key">DRAG</span> to create streams</div>
+    </div>
+
+    <button class="clear-btn" id="clearBtn">Clear</button>
+
+    <div class="mode-bar" id="modeBar">
+        <button class="mode-btn active" data-mode="0">Flow</button>
+        <button class="mode-btn" data-mode="1">Orbit</button>
+        <button class="mode-btn" data-mode="2">Swarm</button>
+        <button class="mode-btn" data-mode="3">Trail</button>
+        <button class="mode-btn" data-mode="4">Nebula</button>
+    </div>
+
+    <div class="type-bar" id="typeBar">
+        <button class="type-btn active" data-type="0">
+            <span class="dot" style="background:hsl(180,80%,60%)"></span>Plasma
+        </button>
+        <button class="type-btn" data-type="1">
+            <span class="dot" style="background:hsl(30,90%,55%)"></span>Ember
+        </button>
+        <button class="type-btn" data-type="2">
+            <span class="dot" style="background:hsl(280,80%,65%)"></span>Void
+        </button>
+        <button class="type-btn" data-type="3">
+            <span class="dot" style="background:hsl(120,70%,55%)"></span>Spore
+        </button>
+    </div>
+
+    <div class="stats" id="stats">Particles: 0</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // ========================
+        // QUADTREE IMPLEMENTATION
+        // ========================
+        class Point {
+            constructor(x, y, data) {
+                this.x = x;
+                this.y = y;
+                this.data = data;
+            }
+        }
+
+        class Box {
+            constructor(x, y, w, h) {
+                this.x = x;
+                this.y = y;
+                this.w = w;
+                this.h = h;
+            }
+
+            contains(point) {
+                return point.x >= this.x - this.w &&
+                       point.x <  this.x + this.w &&
+                       point.y >= this.y - this.h &&
+                       point.y <  this.y + this.h;
+            }
+
+            intersects(range) {
+                return !(range.x - range.w > this.x + this.w ||
+                         range.x + range.w < this.x - this.w ||
+                         range.y - range.h > this.y + this.h ||
+                         range.y + range.h < this.y - this.h);
+            }
+        }
+
+        class Quadtree {
+            constructor(boundary, capacity = 8) {
+                this.boundary = boundary;
+                this.capacity = capacity;
+                this.points = [];
+                this.divided = false;
+                this.northeast = null;
+                this.northwest = null;
+                this.southeast = null;
+                this.southwest = null;
+            }
+
+            insert(point) {
+                if (!this.boundary.contains(point)) {
+                    return false;
+                }
+
+                if (this.points.length < this.capacity && !this.divided) {
+                    this.points.push(point);
+                    return true;
+                }
+
+                if (!this.divided) {
+                    this.subdivide();
+                }
+
+                return this.northeast.insert(point) ||
+                       this.northwest.insert(point) ||
+                       this.southeast.insert(point) ||
+                       this.southwest.insert(point);
+            }
+
+            subdivide() {
+                const x = this.boundary.x;
+                const y = this.boundary.y;
+                const w = this.boundary.w / 2;
+                const h = this.boundary.h / 2;
+
+                const ne = new Box(x + w, y - h, w, h);
+                this.northeast = new Quadtree(ne, this.capacity);
+
+                const nw = new Box(x - w, y - h, w, h);
+                this.northwest = new Quadtree(nw, this.capacity);
+
+                const se = new Box(x + w, y + h, w, h);
+                this.southeast = new Quadtree(se, this.capacity);
+
+                const sw = new Box(x - w, y + h, w, h);
+                this.southwest = new Quadtree(sw, this.capacity);
+
+                this.divided = true;
+
+                for (let p of this.points) {
+                    this.northeast.insert(p) ||
+                    this.northwest.insert(p) ||
+                    this.southeast.insert(p) ||
+                    this.southwest.insert(p);
+                }
+                this.points = [];
+            }
+
+            query(range, found = []) {
+                if (!this.boundary.intersects(range)) {
+                    return found;
+                }
+
+                if (this.divided) {
+                    this.northeast.query(range, found);
+                    this.northwest.query(range, found);
+                    this.southeast.query(range, found);
+                    this.southwest.query(range, found);
+                } else {
+                    for (let p of this.points) {
+                        if (range.contains(p)) {
+                            found.push(p.data);
+                        }
+                    }
+                }
+
+                return found;
+            }
+        }
+
+        // ========================
+        // MAIN APPLICATION
+        // ========================
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const statsEl = document.getElementById('stats');
+        const modeBtns = document.querySelectorAll('.mode-btn');
+        const typeBtns = document.querySelectorAll('.type-btn');
+
+        let W, H;
+        function resize() {
+            W = canvas.width = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        const mouse = { x: W/2, y: H/2, down: false, px: W/2, py: H/2 };
+
+        document.addEventListener('mousemove', e => {
+            mouse.px = mouse.x; mouse.py = mouse.y;
+            mouse.x = e.clientX; mouse.y = e.clientY;
+        });
+        document.addEventListener('mousedown', () => mouse.down = true);
+        document.addEventListener('mouseup', () => mouse.down = false);
+        document.addEventListener('touchstart', e => {
+            mouse.down = true;
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+        }, {passive: false});
+        document.addEventListener('touchmove', e => {
+            mouse.px = mouse.x; mouse.py = mouse.y;
+            mouse.x = e.touches[0].clientX;
+            mouse.y = e.touches[0].clientY;
+            e.preventDefault();
+        }, {passive: false});
+        document.addEventListener('touchend', () => mouse.down = false);
+
+        let mode = 0;
+        let particleType = 0;
+        const modeNames = ['Flow', 'Orbit', 'Swarm', 'Trail', 'Nebula'];
+
+        const TYPE_CONFIGS = [
+            {
+                name: 'Plasma',
+                hueBase: 180, hueRange: 50,
+                sizeBase: 1.5, sizeRange: 2,
+                speedBase: 4, speedRange: 10,
+                lifeBase: 1.2, lifeRange: 1.5,
+                decayBase: 0.0004, decayRange: 0.0008,
+                friction: 0.985,
+                glow: true, glowSize: 4, glowAlpha: 0.08,
+                attractRange: 350, attractStrength: 0.28,
+                repelFromMouse: false,
+                trail: false,
+                mass: 1.0,
+                bounciness: 0.5,
+                interactRadius: 40,
+                interactForce: 0.6
+            },
+            {
+                name: 'Ember',
+                hueBase: 15, hueRange: 40,
+                sizeBase: 1, sizeRange: 3,
+                speedBase: 2, speedRange: 6,
+                lifeBase: 2.0, lifeRange: 2.0,
+                decayBase: 0.0002, decayRange: 0.0004,
+                friction: 0.97,
+                glow: true, glowSize: 5, glowAlpha: 0.12,
+                attractRange: 200, attractStrength: 0.12,
+                repelFromMouse: true,
+                trail: true,
+                mass: 0.6,
+                bounciness: 0.2,
+                interactRadius: 50,
+                interactForce: -0.3
+            },
+            {
+                name: 'Void',
+                hueBase: 270, hueRange: 30,
+                sizeBase: 2.5, sizeRange: 4,
+                speedBase: 1, speedRange: 4,
+                lifeBase: 3.0, lifeRange: 2.0,
+                decayBase: 0.00015, decayRange: 0.0003,
+                friction: 0.99,
+                glow: true, glowSize: 6, glowAlpha: 0.15,
+                attractRange: 500, attractStrength: 0.08,
+                repelFromMouse: false,
+                trail: false,
+                mass: 3.0,
+                bounciness: 0.8,
+                interactRadius: 80,
+                interactForce: 1.0
+            },
+            {
+                name: 'Spore',
+                hueBase: 100, hueRange: 60,
+                sizeBase: 0.8, sizeRange: 1.5,
+                speedBase: 6, speedRange: 8,
+                lifeBase: 1.5, lifeRange: 1.0,
+                decayBase: 0.0005, decayRange: 0.001,
+                friction: 0.96,
+                glow: false, glowSize: 0, glowAlpha: 0,
+                attractRange: 280, attractStrength: 0.36,
+                repelFromMouse: false,
+                trail: false,
+                mass: 0.3,
+                bounciness: 1.2,
+                interactRadius: 30,
+                interactForce: 1.6
+            }
+        ];
+
+        const INTERACTION_MATRIX = [
+            [0.0,  0.4,  0.2,  0.6],
+            [-0.1, 0.0, -0.3,  0.3],
+            [0.3,  0.5,  0.0,  0.7],
+            [0.5,  0.2,  0.1,  0.0]
+        ];
+
+        modeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                mode = parseInt(btn.dataset.mode);
+                modeBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        typeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                particleType = parseInt(btn.dataset.type);
+                typeBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            particles = [];
+        });
+
+        document.addEventListener('keydown', e => {
+            if (e.code === 'Space') particles = [];
+            if (e.key >= '1' && e.key <= '5') {
+                mode = parseInt(e.key) - 1;
+                modeBtns.forEach(b => b.classList.remove('active'));
+                modeBtns[mode].classList.add('active');
+            }
+            if (e.key === 'q' || e.key === 'Q') { particleType = 0; updateTypeBtn(); }
+            if (e.key === 'w' || e.key === 'W') { particleType = 1; updateTypeBtn(); }
+            if (e.key === 'e' || e.key === 'E') { particleType = 2; updateTypeBtn(); }
+            if (e.key === 'r' || e.key === 'R') { particleType = 3; updateTypeBtn(); }
+        });
+
+        function updateTypeBtn() {
+            typeBtns.forEach(b => b.classList.remove('active'));
+            typeBtns[particleType].classList.add('active');
+        }
+
+        class Particle {
+            constructor(x, y, vx, vy, typeOverride = null) {
+                this.type = typeOverride !== null ? typeOverride : particleType;
+                const cfg = TYPE_CONFIGS[this.type];
+                this.x = x; this.y = y;
+                this.vx = vx; this.vy = vy;
+                this.life = cfg.lifeBase + Math.random() * cfg.lifeRange;
+                this.maxLife = this.life;
+                this.size = cfg.sizeBase + Math.random() * cfg.sizeRange;
+                this.hue = cfg.hueBase + Math.random() * cfg.hueRange;
+                this.decay = cfg.decayBase + Math.random() * cfg.decayRange;
+                this.cfg = cfg;
+                if (this.type === 1) this.vy -= Math.random() * 3;
+            }
+
+            applyInteractions(qtree) {
+                const range = new Box(this.x, this.y, this.cfg.interactRadius, this.cfg.interactRadius);
+                const neighbors = qtree.query(range);
+
+                for (let other of neighbors) {
+                    if (this === other) continue;
+
+                    const strength = INTERACTION_MATRIX[this.type][other.type];
+                    const dx = other.x - this.x;
+                    const dy = other.y - this.y;
+                    const distSq = dx * dx + dy * dy;
+                    const maxR = this.cfg.interactRadius;
+
+                    if (distSq > 0.01 && distSq < maxR * maxR) {
+                        const dist = Math.sqrt(distSq);
+                        const force = strength * (1 - dist / maxR) / (dist + 5);
+                        const ndx = dx / dist;
+                        const ndy = dy / dist;
+
+                        this.vx += ndx * force * this.cfg.interactForce;
+                        this.vy += ndy * force * this.cfg.interactForce;
+                    }
+
+                    const touch = this.size + other.size;
+                    if (distSq < touch * touch && distSq > 0.01) {
+                        const dist = Math.sqrt(distSq);
+                        const overlap = touch - dist;
+                        const sepX = (dx / dist) * overlap * 0.5;
+                        const sepY = (dy / dist) * overlap * 0.5;
+
+                        this.x -= sepX;
+                        this.y -= sepY;
+                        other.x += sepX;
+                        other.y += sepY;
+
+                        const b = Math.min(this.cfg.bounciness, other.cfg.bounciness);
+                        const rvx = this.vx - other.vx;
+                        const rvy = this.vy - other.vy;
+                        const rd = rvx * (dx / dist) + rvy * (dy / dist);
+
+                        if (rd < 0) {
+                            const imp = rd * b * 0.5;
+                            const ndx = dx / dist;
+                            const ndy = dy / dist;
+                            this.vx -= ndx * imp;
+                            this.vy -= ndy * imp;
+                            other.vx += ndx * imp;
+                            other.vy += ndy * imp;
+                        }
+                    }
+                }
+            }
+
+            update() {
+                const dx = mouse.x - this.x;
+                const dy = mouse.y - this.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                const cfg = this.cfg;
+
+                switch(this.type) {
+                    case 0:
+                        if (dist < cfg.attractRange) {
+                            const f = (cfg.attractRange - dist) / cfg.attractRange * cfg.attractStrength;
+                            this.vx += (dx/dist || 0) * f;
+                            this.vy += (dy/dist || 0) * f;
+                        }
+                        this.vx += (Math.random() - 0.5) * 0.8;
+                        this.vy += (Math.random() - 0.5) * 0.8;
+                        this.vx *= cfg.friction; this.vy *= cfg.friction;
+                        break;
+                    case 1:
+                        if (dist < cfg.attractRange) {
+                            const f = (cfg.attractRange - dist) / cfg.attractRange * cfg.attractStrength;
+                            if (cfg.repelFromMouse) {
+                                this.vx -= (dx/dist || 0) * f;
+                                this.vy -= (dy/dist || 0) * f;
+                            } else {
+                                this.vx += (dx/dist || 0) * f;
+                                this.vy += (dy/dist || 0) * f;
+                            }
+                        }
+                        this.vy -= 0.03;
+                        this.vx += (Math.random() - 0.5) * 0.2;
+                        this.vy += (Math.random() - 0.5) * 0.16;
+                        this.vx *= cfg.friction; this.vy *= cfg.friction;
+                        break;
+                    case 2:
+                        if (dist < cfg.attractRange && dist > 15) {
+                            const a = Math.atan2(dy, dx);
+                            const os = 6 / (dist * 0.006 + 1);
+                            this.vx += Math.cos(a + Math.PI/2) * os * 0.12;
+                            this.vy += Math.sin(a + Math.PI/2) * os * 0.12;
+                            this.vx += (dx/dist) * -0.024;
+                            this.vy += (dy/dist) * -0.024;
+                        }
+                        this.vx += (Math.random() - 0.5) * 0.16;
+                        this.vy += (Math.random() - 0.5) * 0.16;
+                        this.vx *= cfg.friction; this.vy *= cfg.friction;
+                        break;
+                    case 3:
+                        if (dist < cfg.attractRange) {
+                            const f = (cfg.attractRange - dist) / cfg.attractRange * cfg.attractStrength;
+                            this.vx += (dx/dist || 0) * f;
+                            this.vy += (dy/dist || 0) * f;
+                        }
+                        this.vx += (Math.random() - 0.5) * 1.2;
+                        this.vy += (Math.random() - 0.5) * 1.2;
+                        this.vx *= cfg.friction; this.vy *= cfg.friction;
+                        break;
+                }
+
+                if (mode === 1) {
+                    const a = Math.atan2(dy, dx);
+                    const of = 0.06 / (dist * 0.01 + 1);
+                    this.vx += Math.cos(a + Math.PI/2) * of;
+                    this.vy += Math.sin(a + Math.PI/2) * of;
+                }
+                if (mode === 3) {
+                    if (dist < 120) {
+                        this.vx += (mouse.x - mouse.px) * 0.12;
+                        this.vy += (mouse.y - mouse.py) * 0.12;
+                    }
+                    this.vx *= 0.96; this.vy *= 0.96;
+                }
+                if (mode === 4) {
+                    this.vx += Math.sin(this.y * 0.008 + Date.now()*0.0008) * 0.024;
+                    this.vy += Math.cos(this.x * 0.008 + Date.now()*0.0008) * 0.024;
+                    this.vx *= 0.993; this.vy *= 0.993;
+                    this.hue = (this.hue + 0.1) % 360;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+
+                const b = cfg.bounciness;
+                if (this.x < 0) { this.x = 0; this.vx = Math.abs(this.vx) * b; }
+                if (this.x > W) { this.x = W; this.vx = -Math.abs(this.vx) * b; }
+                if (this.y < 0) { this.y = 0; this.vy = Math.abs(this.vy) * b; }
+                if (this.y > H) { this.y = H; this.vy = -Math.abs(this.vy) * b; }
+            }
+
+            draw(ctx) {
+                const lr = this.life / this.maxLife;
+                const a = lr < 0.15 ? lr * 6.67 : Math.min(1, lr * 1.3);
+                const s = this.size * (0.2 + lr * 0.8);
+                const cfg = this.cfg;
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, s, 0, Math.PI * 2);
+
+                let br = 50;
+                if (this.type === 1) br = 55 + (1 - lr) * 30;
+                if (this.type === 2) br = 40 + lr * 20;
+                if (this.type === 3) br = 60 + (1 - lr) * 20;
+
+                ctx.fillStyle = `hsla(${this.hue}, ${this.type === 2 ? 60 : 80}%, ${br}%, ${a * (this.type === 2 ? 0.7 : 1)})`;
+                ctx.fill();
+
+                if (cfg.glow && lr > 0.2) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, s * cfg.glowSize, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${a * cfg.glowAlpha})`;
+                    ctx.fill();
+                }
+
+                if (this.type === 1 && cfg.trail && lr > 0.3) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y - s * 2, s * 0.6, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsla(${this.hue + 20}, 90%, 70%, ${a * 0.3})`;
+                    ctx.fill();
+                }
+            }
+        }
+
+        let particles = [];
+        const MAX_PARTICLES = 600;
+        let frame = 0;
+
+        function spawnParticles() {
+            const cfg = TYPE_CONFIGS[particleType];
+            const rate = mouse.down ? 6 : 2;
+
+            for (let i = 0; i < rate; i++) {
+                if (particles.length >= MAX_PARTICLES) {
+                    particles.shift();
+                }
+
+                let x, y, vx, vy;
+
+                if (mouse.down) {
+                    const a = Math.random() * Math.PI * 2;
+                    const sp = Math.random() * cfg.speedRange + cfg.speedBase;
+                    x = mouse.x; y = mouse.y;
+                    vx = Math.cos(a) * sp;
+                    vy = Math.sin(a) * sp;
+                } else {
+                    const a = Math.random() * Math.PI * 2;
+                    const d = Math.random() * 100 + 30;
+                    x = mouse.x + Math.cos(a) * d;
+                    y = mouse.y + Math.sin(a) * d;
+                    vx = (Math.random() - 0.5) * 2;
+                    vy = (Math.random() - 0.5) * 2;
+                }
+
+                particles.push(new Particle(x, y, vx, vy));
+            }
+
+            if (mode === 2 && frame % 12 === 0) {
+                const ot = (particleType + 1 + Math.floor(Math.random()*3)) % 4;
+                const a = Math.random() * Math.PI * 2;
+                const d = Math.random() * 150 + 50;
+                particles.push(new Particle(
+                    mouse.x + Math.cos(a) * d,
+                    mouse.y + Math.sin(a) * d,
+                    (Math.random()-0.5)*2, (Math.random()-0.5)*2, ot
+                ));
+            }
+        }
+
+        function drawConnections() {
+            if (mode !== 2 && mode !== 4) return;
+
+            const cd = mode === 4 ? 90 : 65;
+            ctx.lineWidth = 0.35;
+
+            for (let t = 0; t < 4; t++) {
+                const tp = [];
+                for (let p of particles) if (p.type === t) tp.push(p);
+
+                for (let i = 0; i < tp.length; i++) {
+                    let c = 0;
+                    for (let j = i+1; j < tp.length && c < 2; j++) {
+                        const dx = tp[i].x - tp[j].x;
+                        const dy = tp[i].y - tp[j].y;
+                        const dist = Math.sqrt(dx*dx + dy*dy);
+
+                        if (dist < cd) {
+                            const a = (1 - dist/cd) * 0.2 * tp[i].life;
+                            ctx.strokeStyle = `hsla(${tp[i].hue}, 70%, 60%, ${a})`;
+                            ctx.beginPath();
+                            ctx.moveTo(tp[i].x, tp[i].y);
+                            ctx.lineTo(tp[j].x, tp[j].y);
+                            ctx.stroke();
+                            c++;
+                        }
+                    }
+                }
+            }
+        }
+
+        function drawInteractionLines(qtree) {
+            ctx.lineWidth = 0.6;
+
+            for (let p of particles) {
+                if (p.type === 3) continue;
+
+                const range = new Box(p.x, p.y, p.cfg.interactRadius * 0.6, p.cfg.interactRadius * 0.6);
+                const neighbors = qtree.query(range);
+
+                for (let o of neighbors) {
+                    if (p === o || p.type === o.type) continue;
+
+                    const dx = o.x - p.x;
+                    const dy = o.y - p.y;
+                    const d2 = dx*dx + dy*dy;
+                    const maxR = Math.max(p.cfg.interactRadius, o.cfg.interactRadius);
+
+                    if (d2 < maxR*maxR * 0.36 && d2 > 0.01) {
+                        const dist = Math.sqrt(d2);
+                        const eff = INTERACTION_MATRIX[p.type][o.type];
+                        const a = Math.abs(eff) * 0.15 * (1 - dist/maxR);
+                        ctx.strokeStyle = `hsla(${(p.hue+o.hue)/2}, 70%, 70%, ${a})`;
+                        ctx.beginPath();
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(o.x, o.y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function drawMouseGlow() {
+            const t = Date.now() * 0.002;
+            const r = 30 + Math.sin(t) * 10;
+            const cfg = TYPE_CONFIGS[particleType];
+
+            const g = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, r*3);
+            g.addColorStop(0, `hsla(${cfg.hueBase}, 80%, 60%, 0.1)`);
+            g.addColorStop(1, 'transparent');
+
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(mouse.x, mouse.y, r*3, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        function animate() {
+            ctx.fillStyle = mode === 4 ? 'rgba(10, 10, 15, 0.04)' : 'rgba(10, 10, 15, 0.12)';
+            ctx.fillRect(0, 0, W, H);
+
+            spawnParticles();
+
+            const boundary = new Box(W/2, H/2, W/2, H/2);
+            const qtree = new Quadtree(boundary, 8);
+            for (let p of particles) {
+                qtree.insert(new Point(p.x, p.y, p));
+            }
+
+            for (let p of particles) {
+                p.applyInteractions(qtree);
+                p.update();
+                p.draw(ctx);
+            }
+
+            drawConnections();
+            drawInteractionLines(qtree);
+            drawMouseGlow();
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                if (particles[i].life <= 0) particles.splice(i, 1);
+            }
+
+            if (frame % 30 === 0) {
+                const c = [0,0,0,0];
+                for (let p of particles) c[p.type]++;
+                statsEl.textContent = `${modeNames[mode]} | P:${c[0]} E:${c[1]} V:${c[2]} S:${c[3]}`;
+            }
+
+            frame++;
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
